@@ -16,7 +16,6 @@ verificável — e quando alguém contesta um número, a discussão tem onde com
 import enum
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     Enum,
     Float,
@@ -25,10 +24,9 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, IdMixin, TenantMixin, TimestampMixin
+from app.models.base import BigInt, Base, IdMixin, Json, TenantMixin, TimestampMixin
 
 
 class PapelMensagem(str, enum.Enum):
@@ -57,10 +55,10 @@ class Conversa(Base, IdMixin, TenantMixin, TimestampMixin):
     __tablename__ = "conversas"
 
     usuario_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
     )
     conexao_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     titulo: Mapped[str] = mapped_column(String(200), nullable=False, default="Nova conversa")
 
@@ -73,7 +71,7 @@ class Mensagem(Base, IdMixin, TenantMixin, TimestampMixin):
     __tablename__ = "mensagens"
 
     conversa_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("conversas.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("conversas.id", ondelete="CASCADE"), nullable=False, index=True
     )
     papel: Mapped[PapelMensagem] = mapped_column(
         Enum(PapelMensagem, native_enum=False), nullable=False
@@ -82,7 +80,7 @@ class Mensagem(Base, IdMixin, TenantMixin, TimestampMixin):
 
     # Especificação do gráfico devolvida ao frontend (tipo, eixos, séries). Guardada
     # para o dashboard poder ser reconstruído sem reexecutar a pergunta.
-    grafico: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    grafico: Mapped[dict | None] = mapped_column(Json, default=None)
 
     conversa: Mapped[Conversa] = relationship(back_populates="mensagens")
 
@@ -98,10 +96,10 @@ class Consulta(Base, IdMixin, TenantMixin, TimestampMixin):
     __tablename__ = "consultas"
 
     mensagem_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("mensagens.id", ondelete="SET NULL"), default=None, index=True
+        BigInt, ForeignKey("mensagens.id", ondelete="SET NULL"), default=None, index=True
     )
     conexao_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     pergunta: Mapped[str] = mapped_column(Text, nullable=False)
@@ -112,17 +110,19 @@ class Consulta(Base, IdMixin, TenantMixin, TimestampMixin):
     motivo_recusa: Mapped[str | None] = mapped_column(Text, default=None)
 
     # A spec estruturada que o LLM devolveu (dimensões, medidas, filtros).
-    spec: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    spec: Mapped[dict | None] = mapped_column(Json, default=None)
     # O SQL que o nosso código montou. Mostrado ao usuário sob demanda — um BI que
     # esconde o SQL está pedindo confiança cega.
     sql_gerado: Mapped[str | None] = mapped_column(Text, default=None)
 
     # ─── O que o planejador previu (antes de executar) ────────────────────────
-    linhas_estimadas: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    linhas_estimadas: Mapped[int | None] = mapped_column(
+        BigInt, default=None)
     custo_estimado: Mapped[float | None] = mapped_column(Float, default=None)
 
     # ─── O que aconteceu de fato ──────────────────────────────────────────────
-    linhas_retornadas: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    linhas_retornadas: Mapped[int | None] = mapped_column(
+        BigInt, default=None)
     duracao_ms: Mapped[int | None] = mapped_column(Integer, default=None)
 
     # Alguma célula foi suprimida por base insuficiente? Se sim, a tela precisa dizer.

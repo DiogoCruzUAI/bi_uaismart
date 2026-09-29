@@ -77,6 +77,26 @@ Duas propriedades que valem registrar:
 - **`EXPLAIN` não é `EXPLAIN ANALYZE`.** O primeiro estima sem ler uma página; o
   segundo executa. Confundir os dois anula a camada 7 inteira.
 
+## Reperfilar preserva o julgamento humano
+
+A regra mais importante da persistência (`semantic/persistencia.py`), e a mais fácil de
+quebrar sem perceber:
+
+| O que | No reperfilamento |
+|---|---|
+| Estatística (linhas, cardinalidade, fração nula, amostra) | **sobrescrita** — é o retrato de agora |
+| Julgamento (descrição, o que **não** é, unidade, escala, papel revisado) | **preservado** — o que uma pessoa revisou não é tocado |
+| Tabela ou coluna que sumiu da origem | **marcada**, não apagada — a procedência de uma consulta antiga precisa continuar apontando para algo |
+| Ligação revisada | **preservada** — a inferência roda de novo e chegaria com outra confiança |
+
+Sem isso, alguém revisa o dicionário, escreve que `salario` está em centavos, e o
+próximo perfilamento apaga a frase. Nada falha, nada aparece no log — só as respostas
+voltam a ficar plausíveis e erradas. O resumo devolve `revisoes_preservadas` para a
+tela poder dizer que nada se perdeu.
+
+`versao_dicionario` só sobe quando a **estrutura** muda: ela entra na chave de cache de
+toda pergunta, e reperfilar sem novidade não pode invalidar o cache de todo mundo.
+
 ## Multi-tenancy
 
 Fundação, não fase posterior. Retrofit de isolamento é como se vaza dado.
@@ -132,19 +152,22 @@ backend/app/
 ├── repositories/  base (tenant obrigatório)                                ✓
 ├── connectors/    base (contrato), postgres                                ✓
 ├── text2sql/      guardrails ✓, executor ✓
-├── semantic/      sinais ✓, estrutura ✓, retrato ✓, profiler ✓ · dicionário a construir
+├── semantic/      sinais ✓, estrutura ✓, retrato ✓, profiler ✓, persistencia ✓
+├── schemas/       conexao ✓
 ├── chat/          histórico, contexto, streaming                           a construir
-└── routers/       health ✓ · auth, conexoes, chat                          a construir
+└── routers/       health ✓, conexoes ✓ · auth, chat                        a construir
+alembic/           migration inicial ✓ (10 tabelas, 19 índices)
 ```
 
-150 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
+183 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
 separado**. Guardrails, avaliação de privilégio, sinais e inferência de estrutura são
 funções puras com cobertura exaustiva; conectores e perfilador são coordenação.
 
 ## Próximos passos
 
-1. ~~**Perfilador**~~ ✓ — `semantic/profiler.py` lê `pg_class` e `pg_stats` e monta o
-   retrato sem varrer nada. Falta persistir no catálogo e expor por endpoint.
+1. ~~**Perfilador**~~ ✓ — completo: `semantic/profiler.py` monta o retrato,
+   `semantic/persistencia.py` grava no catálogo e `routers/conexoes.py` expõe
+   `POST /conexoes/{id}/perfilar`.
 2. **Gerador de dicionário** (`semantic/dicionario.py`) — Claude lê o retrato e propõe
    descrição, o que **não** é, unidade e escala. Batch API. Humano aprova.
 3. **Registro de medidas** — o que vira o equivalente genérico dos cubos YAML.

@@ -21,7 +21,6 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -32,10 +31,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, IdMixin, TenantMixin, TimestampMixin
+from app.models.base import BigInt, Base, IdMixin, Json, TenantMixin, TimestampMixin
 
 
 class PapelTabela(str, enum.Enum):
@@ -76,7 +74,7 @@ class Tabela(Base, IdMixin, TenantMixin, TimestampMixin):
     )
 
     conexao_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     esquema: Mapped[str] = mapped_column(String(120), nullable=False)
     nome: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -85,8 +83,10 @@ class Tabela(Base, IdMixin, TenantMixin, TimestampMixin):
     # Estimativa do catálogo do banco (`reltuples`), não `COUNT(*)`. Contar 300
     # milhões de linhas para saber que são muitas é exatamente a força bruta que
     # este projeto recusa. A estimativa erra por alguns por cento e custa zero.
-    linhas_estimadas: Mapped[int | None] = mapped_column(BigInteger, default=None)
-    bytes_estimados: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    linhas_estimadas: Mapped[int | None] = mapped_column(
+        BigInt, default=None)
+    bytes_estimados: Mapped[int | None] = mapped_column(
+        BigInt, default=None)
 
     papel: Mapped[PapelTabela] = mapped_column(
         Enum(PapelTabela, native_enum=False), default=PapelTabela.desconhecido, nullable=False
@@ -96,12 +96,12 @@ class Tabela(Base, IdMixin, TenantMixin, TimestampMixin):
 
     # Sem recorte obrigatório, uma tabela grande vira varredura completa. Lista de
     # colunas que toda consulta a esta tabela precisa filtrar (ex.: ["uf"]).
-    recorte_obrigatorio: Mapped[list | None] = mapped_column(JSONB, default=None)
+    recorte_obrigatorio: Mapped[list | None] = mapped_column(Json, default=None)
 
     confianca_ia: Mapped[float | None] = mapped_column(Float, default=None)
     revisada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revisada_por_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("usuarios.id", ondelete="SET NULL"), default=None
+        BigInt, ForeignKey("usuarios.id", ondelete="SET NULL"), default=None
     )
 
     conexao: Mapped["Conexao"] = relationship(back_populates="tabelas")  # noqa: F821
@@ -117,7 +117,7 @@ class Coluna(Base, IdMixin, TenantMixin, TimestampMixin):
     __table_args__ = (UniqueConstraint("tabela_id", "nome", name="uq_coluna_tabela_nome"),)
 
     tabela_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("cat_tabelas.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("cat_tabelas.id", ondelete="CASCADE"), nullable=False, index=True
     )
     nome: Mapped[str] = mapped_column(String(200), nullable=False)
     tipo_sql: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -139,20 +139,21 @@ class Coluna(Base, IdMixin, TenantMixin, TimestampMixin):
 
     # Quando a coluna é código, onde está a tabela que dá nome a ele.
     dominio_tabela_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("cat_tabelas.id", ondelete="SET NULL"), default=None
+        BigInt, ForeignKey("cat_tabelas.id", ondelete="SET NULL"), default=None
     )
 
     # ─── Perfilamento (amostrado, nunca varredura) ────────────────────────────
-    cardinalidade_estimada: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    cardinalidade_estimada: Mapped[int | None] = mapped_column(
+        BigInt, default=None)
     fracao_nula: Mapped[float | None] = mapped_column(Float, default=None)
     # Valores mais comuns e extremos, de `pg_stats`. É o que permite à IA perceber
     # que um salário "máximo" de 10.000.000.000 está em centavos ou é sentinela.
-    amostra: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    amostra: Mapped[dict | None] = mapped_column(Json, default=None)
 
     confianca_ia: Mapped[float | None] = mapped_column(Float, default=None)
     revisada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revisada_por_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("usuarios.id", ondelete="SET NULL"), default=None
+        BigInt, ForeignKey("usuarios.id", ondelete="SET NULL"), default=None
     )
 
     tabela: Mapped[Tabela] = relationship(back_populates="colunas", foreign_keys=[tabela_id])
@@ -168,13 +169,13 @@ class Relacionamento(Base, IdMixin, TenantMixin, TimestampMixin):
     __tablename__ = "cat_relacionamentos"
 
     conexao_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     coluna_origem_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("cat_colunas.id", ondelete="CASCADE"), nullable=False
+        BigInt, ForeignKey("cat_colunas.id", ondelete="CASCADE"), nullable=False
     )
     coluna_destino_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("cat_colunas.id", ondelete="CASCADE"), nullable=False
+        BigInt, ForeignKey("cat_colunas.id", ondelete="CASCADE"), nullable=False
     )
     origem: Mapped[OrigemRelacionamento] = mapped_column(
         Enum(OrigemRelacionamento, native_enum=False), nullable=False
@@ -198,10 +199,10 @@ class Medida(Base, IdMixin, TenantMixin, TimestampMixin):
     __table_args__ = (UniqueConstraint("conexao_id", "chave", name="uq_medida_conexao_chave"),)
 
     conexao_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
+        BigInt, ForeignKey("conexoes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     tabela_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("cat_tabelas.id", ondelete="CASCADE"), nullable=False
+        BigInt, ForeignKey("cat_tabelas.id", ondelete="CASCADE"), nullable=False
     )
     chave: Mapped[str] = mapped_column(String(80), nullable=False)
     rotulo: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -211,7 +212,7 @@ class Medida(Base, IdMixin, TenantMixin, TimestampMixin):
 
     # Filtros que a medida sempre aplica, mesmo que o usuário não peça — é onde
     # moram regras como "transferência não é contratação" e "só salário mensal".
-    filtros_implicitos: Mapped[list | None] = mapped_column(JSONB, default=None)
+    filtros_implicitos: Mapped[list | None] = mapped_column(Json, default=None)
 
     # Piso de linhas para o valor poder ser exibido. Abaixo dele a célula sai
     # suprimida, com a contagem e sem o valor. Zero desliga a supressão; só deve
@@ -221,5 +222,5 @@ class Medida(Base, IdMixin, TenantMixin, TimestampMixin):
     confianca_ia: Mapped[float | None] = mapped_column(Float, default=None)
     revisada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revisada_por_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("usuarios.id", ondelete="SET NULL"), default=None
+        BigInt, ForeignKey("usuarios.id", ondelete="SET NULL"), default=None
     )

@@ -17,7 +17,15 @@ from app.core.config import settings
 import app.models  # noqa: F401  — registra todas as tabelas em Base.metadata
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+
+# `-x url=...` sobrepõe o destino. É o mecanismo do próprio Alembic, e existe aqui
+# para a migration poder ser executada contra um banco descartável em teste:
+#
+#     alembic -x url=sqlite+aiosqlite:///descartavel.db upgrade head
+#
+# Migration que nunca rodou é só um arquivo com boa aparência.
+_x = context.get_x_argument(as_dictionary=True)
+config.set_main_option("sqlalchemy.url", _x.get("url") or settings.database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
