@@ -24,9 +24,11 @@ from app.connectors.base import (
     ErroDeConexao,
     Estimativa,
     LimiteExcedido,
+    PrivilegiosDaConexao,
     RelacionamentoBruto,
     ResultadoConsulta,
     TabelaBruta,
+    avaliar_privilegios,
 )
 from app.core.config import settings
 
@@ -34,6 +36,45 @@ logger = structlog.get_logger()
 
 # Esquemas que nunca entram no catálogo.
 _ESQUEMAS_IGNORADOS = ("pg_catalog", "information_schema", "pg_toast")
+
+_SQL_PRIVILEGIOS_BASICOS = """
+SELECT r.rolsuper                                                      AS eh_superusuario,
+       r.rolbypassrls                                                  AS ignora_rls,
+       has_database_privilege(current_user, current_database(), 'CREATE') AS pode_criar_no_banco
+  FROM pg_roles r
+ WHERE r.rolname = current_user
+"""
+
+# Papéis dos quais o usuário é membro, herança inclusa. Sem nomear papel predefinido
+# nenhum: `pg_has_role` levanta erro se o papel não existir, e o conjunto de papéis
+# predefinidos mudou entre versões do Postgres. Perguntar "de quais sou membro" e
+# comparar em Python funciona igual da 11 à 18.
+_SQL_PAPEIS = """
+SELECT r.rolname
+  FROM pg_roles r
+ WHERE pg_has_role(current_user, r.oid, 'MEMBER') AND r.rolname <> current_user
+"""
+
+# `has_table_privilege` com dois argumentos usa o current_user e já leva em conta
+# privilégio herdado de papel. Só catálogo: nenhuma linha de dado é lida.
+_SQL_TABELAS_COM_ESCRITA = """
+WITH gravaveis AS (
+    SELECT n.nspname || '.' || c.relname AS nome
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relkind IN ('r', 'p')
+       AND n.nspname <> ALL($1::text[])
+       AND (has_table_privilege(c.oid, 'INSERT')
+         OR has_table_privilege(c.oid, 'UPDATE')
+         OR has_table_privilege(c.oid, 'DELETE')
+         OR has_table_privilege(c.oid, 'TRUNCATE'))
+)
+SELECT count(*)                                        AS total,
+       (SELECT array_agg(nome) FROM (
+            SELECT nome FROM gravaveis ORDER BY nome LIMIT 3
+        ) amostra)                                     AS exemplos
+  FROM gravaveis
+"""
 
 _SQL_TABELAS = """
 SELECT n.nspname                         AS esquema,
@@ -149,24 +190,57 @@ class ConectorPostgres(Conector):
 
     # ─── Teste ────────────────────────────────────────────────────────────────
 
-    async def testar(self) -> None:
-        """Conecta e confirma que a sessão é somente-leitura de fato.
+    async def coletar_privilegios(self) -> PrivilegiosDaConexao:
+        """Pergunta ao catálogo o que este papel pode fazer.
+
+        Substitui uma checagem que era uma tautologia: a versão anterior conferia
+        `SHOW transaction_read_only`, mas a própria conexão envia
+        `default_transaction_read_only=on` em `server_settings` — a resposta era `on`
+        até para superusuário. Ela validava a nossa configuração, não o privilégio do
+        papel, e teria aprovado exatamente a credencial que existia para recusar.
+
+        Tudo aqui é consulta a catálogo: nenhuma tabela de dado é tocada.
+        """
+        pool = await self._obter_pool()
+        async with pool.acquire() as conn:
+            basico = await conn.fetchrow(_SQL_PRIVILEGIOS_BASICOS)
+            papeis = await conn.fetch(_SQL_PAPEIS)
+            escrita = await conn.fetchrow(_SQL_TABELAS_COM_ESCRITA, list(_ESQUEMAS_IGNORADOS))
+
+        return PrivilegiosDaConexao(
+            eh_superusuario=bool(basico["eh_superusuario"]),
+            pode_criar_no_banco=bool(basico["pode_criar_no_banco"]),
+            ignora_rls=bool(basico["ignora_rls"]),
+            papeis=frozenset(r["rolname"] for r in papeis),
+            tabelas_com_escrita=int(escrita["total"] or 0),
+            exemplos_com_escrita=tuple(escrita["exemplos"] or ()),
+        )
+
+    async def testar(self) -> list[str]:
+        """Conecta e recusa a credencial que possa escrever.
 
         Um usuário com permissão de escrita conectaria normalmente e a plataforma
         seguiria feliz — até o dia em que um bug nos guardrails encontrasse um
-        `DELETE`. Melhor recusar a conexão no cadastro, quando o cliente ainda está
-        na tela e pode corrigir a permissão.
+        `DELETE`. Melhor recusar no cadastro, quando o cliente ainda está na tela e
+        pode corrigir o `GRANT`.
         """
         pool = await self._obter_pool()
         async with pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
-            somente_leitura = await conn.fetchval("SHOW transaction_read_only")
-            if somente_leitura != "on":
-                raise ErroDeConexao(
-                    "A sessão não está em modo somente-leitura. Cadastre um usuário "
-                    "com permissão apenas de SELECT — a plataforma nunca escreve no "
-                    "banco do cliente e recusa credenciais que possam."
-                )
+
+        privilegios = await self.coletar_privilegios()
+        impedimentos, alertas = avaliar_privilegios(privilegios)
+
+        if impedimentos:
+            raise ErroDeConexao(
+                "Esta credencial tem mais permissão do que a plataforma aceita. "
+                "A plataforma nunca escreve no banco do cliente, e essa garantia "
+                "precisa ser do Postgres.\n\n"
+                + "\n".join(f"• {i}" for i in impedimentos)
+                + "\n\nO GRANT recomendado está em docs/INFRA.md."
+            )
+
+        return alertas
 
     # ─── Perfilamento ─────────────────────────────────────────────────────────
 

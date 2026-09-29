@@ -33,7 +33,8 @@ class ConectorFalso(Conector):
         self.sql_executado = sql
         return ResultadoConsulta(colunas=["x"], linhas=[{"x": 1}], duracao_ms=5)
 
-    async def testar(self) -> None: ...
+    async def testar(self) -> list[str]: return []
+    async def coletar_privilegios(self): raise NotImplementedError
     async def listar_tabelas(self): return []
     async def listar_colunas(self, esquema, tabela): return []
     async def listar_relacionamentos(self): return []

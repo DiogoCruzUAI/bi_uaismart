@@ -180,13 +180,37 @@ ALTER ROLE nextgen_leitor SET statement_timeout = '30s';
 
 Repita os três `GRANT` para cada esquema que a plataforma deve enxergar.
 
-> **Lacuna conhecida, a corrigir.** O `testar()` de `connectors/postgres.py` confere
-> `SHOW transaction_read_only` — mas a própria conexão já envia
-> `default_transaction_read_only=on` em `server_settings`, então a resposta é `on`
-> mesmo para um superusuário. A checagem hoje valida a nossa configuração, não o
-> privilégio do papel: é uma tautologia. Precisa passar a recusar `is_superuser` e a
-> conferir ausência de `INSERT` via `has_table_privilege`. Até lá, o `GRANT` acima é
-> a única garantia real — aplique-o.
+### O que a plataforma verifica no cadastro
+
+`testar()` pergunta ao catálogo o que o papel pode fazer e **recusa a conexão** se
+encontrar qualquer um destes:
+
+| Impedimento | Por quê |
+|---|---|
+| É superusuário | Ignora toda permissão e desliga o modo somente-leitura da própria sessão |
+| Tem INSERT, UPDATE, DELETE ou TRUNCATE em alguma tabela | A mensagem nomeia até três delas |
+| Tem CREATE no banco | Cria as próprias tabelas e funções, anulando o resto |
+| É membro de `pg_execute_server_program`, `pg_write_server_files`, `pg_read_server_files`, `pg_write_all_data`, `pg_signal_backend` ou `pg_maintain` | Poder além de ler dado |
+
+E **alerta sem bloquear** quando o papel tem `BYPASSRLS` ou é membro de
+`pg_read_all_data`: é leitura ampla demais, não escrita, e quem decide se o acesso é
+amplo demais é o dono do dado.
+
+> Isto substituiu uma verificação que era uma tautologia: a versão anterior conferia
+> `SHOW transaction_read_only`, mas a própria conexão envia
+> `default_transaction_read_only=on` em `server_settings` — a resposta era `on` até
+> para superusuário. Ela validava a nossa configuração, não o privilégio do papel, e
+> teria aprovado exatamente a credencial que existia para recusar.
+
+**Verifique na VPS assim que ela subir.** As consultas de catálogo são cobertas por
+teste de integração que só roda com um Postgres de verdade:
+
+```bash
+TEST_PG_DSN=postgres://nextgen_leitor:senha@host:5432/banco pytest tests/integration -v
+```
+
+Vale repetir isso contra o banco de cada cliente novo: versões diferentes do Postgres
+expõem conjuntos diferentes de papéis predefinidos.
 
 ## Rede até o Postgres do Leads
 

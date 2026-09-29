@@ -135,6 +135,16 @@ class Settings(BaseSettings):
                     f"Em produção, DB_USER não pode ser '{self.db_user}'. "
                     "Crie um usuário dedicado com privilégios mínimos."
                 )
+            # A lista de segredos fracos existia só para a SECRET_KEY, então o
+            # `troque-me` que vem no .env.example passava batido aqui. O banco só
+            # escuta em 127.0.0.1, mas "está atrás do firewall" é a premissa que
+            # todo vazamento lateral desmente.
+            if self.db_password in _SEGREDOS_FRACOS or len(self.db_password) < 16:
+                raise ValueError(
+                    "DB_PASSWORD é fraca ou curta demais para produção (mínimo 16 "
+                    'caracteres). Gere com: python -c "import secrets; '
+                    'print(secrets.token_urlsafe(24))"'
+                )
             if not self.anthropic_api_key:
                 raise ValueError("ANTHROPIC_API_KEY é obrigatória em produção.")
         return self
