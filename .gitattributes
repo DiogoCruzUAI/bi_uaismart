@@ -1,0 +1,10 @@
+# O código roda em Linux (Docker/VPS Ubuntu), mesmo quando editado no Windows.
+# Sem isto, um shell script ou entrypoint com CRLF falha no container com o erro
+# mais enganoso possível: "no such file or directory" apontando para um arquivo
+# que está ali — o \r vira parte do nome do interpretador no shebang.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
