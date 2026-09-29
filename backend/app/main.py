@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import checar_conexao, engine
 from app.core.redis_client import fechar_redis
-from app.routers import auth, conexoes, health
+from app.routers import auth, chat, conexoes, health
 
 logger = structlog.get_logger()
 
@@ -51,3 +51,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(conexoes.router)
+app.include_router(chat.router)

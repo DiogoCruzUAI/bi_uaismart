@@ -16,7 +16,9 @@ Os quatro primeiros passos são de graça. Só o quinto custa. Rodar os quatro a
 literalmente, a diferença entre inteligência e força bruta.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import structlog
 
@@ -44,6 +46,7 @@ async def executar_vigiado(
     *,
     conector: Conector,
     tabelas_permitidas: set[str] | None,
+    parametros: Sequence[Any] = (),
     max_linhas_estimadas: int | None = None,
     max_custo_estimado: float | None = None,
 ) -> ExecucaoVigiada:
@@ -63,7 +66,7 @@ async def executar_vigiado(
     if not validado.tem_agregacao and not validado.tem_limite:
         sql_final = aplicar_limite(sql_final, settings.max_result_rows, dialeto=conector.dialeto)
 
-    estimativa = await conector.estimar(sql_final)
+    estimativa = await conector.estimar(sql_final, parametros)
 
     # Varredura: o maior volume que a consulta toca em qualquer ponto do plano.
     if estimativa.linhas_varridas > max_linhas:
@@ -101,7 +104,7 @@ async def executar_vigiado(
         tabelas=sorted(validado.tabelas_referenciadas),
     )
 
-    resultado = await conector.executar(sql_final, settings.max_result_rows)
+    resultado = await conector.executar(sql_final, settings.max_result_rows, parametros)
     return ExecucaoVigiada(resultado=resultado, sql_executado=sql_final, estimativa=estimativa)
 
 

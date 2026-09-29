@@ -26,10 +26,11 @@ class ConectorFalso(Conector):
         )
         self.sql_executado: str | None = None
 
-    async def estimar(self, sql: str) -> Estimativa:
+    async def estimar(self, sql: str, parametros=()) -> Estimativa:
+        self.parametros = list(parametros)
         return self._estimativa
 
-    async def executar(self, sql: str, limite_linhas: int) -> ResultadoConsulta:
+    async def executar(self, sql: str, limite_linhas: int, parametros=()) -> ResultadoConsulta:
         self.sql_executado = sql
         return ResultadoConsulta(colunas=["x"], linhas=[{"x": 1}], duracao_ms=5)
 

@@ -13,6 +13,7 @@ distintos é categórica e não numérica.
 
 import json
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import asyncpg
@@ -303,7 +304,7 @@ class ConectorPostgres(Conector):
 
     # ─── Estimativa e execução ────────────────────────────────────────────────
 
-    async def estimar(self, sql: str) -> Estimativa:
+    async def estimar(self, sql: str, parametros: Sequence[Any] = ()) -> Estimativa:
         """`EXPLAIN` puro — sem `ANALYZE`, que executaria a consulta.
 
         Confusão que custa caro: `EXPLAIN ANALYZE` **roda** o comando. Aqui a
@@ -312,7 +313,7 @@ class ConectorPostgres(Conector):
         pool = await self._obter_pool()
         try:
             async with pool.acquire() as conn:
-                bruto = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {sql}")
+                bruto = await conn.fetchval(f"EXPLAIN (FORMAT JSON) {sql}", *parametros)
         except asyncpg.PostgresError as e:
             raise ErroDeConexao(f"O banco recusou a consulta: {e.args[0] if e.args else e}") from e
 
@@ -324,7 +325,9 @@ class ConectorPostgres(Conector):
             plano=plano,
         )
 
-    async def executar(self, sql: str, limite_linhas: int) -> ResultadoConsulta:
+    async def executar(
+        self, sql: str, limite_linhas: int, parametros: Sequence[Any] = ()
+    ) -> ResultadoConsulta:
         pool = await self._obter_pool()
         inicio = time.perf_counter()
         try:
@@ -345,7 +348,7 @@ class ConectorPostgres(Conector):
                     # Com cursor, o consumo de memória é `limite_linhas + 1` linhas,
                     # sempre, independentemente do que a consulta devolva. É o que
                     # torna a RAM da máquina uma conta fechada em vez de uma aposta.
-                    cursor = await conn.cursor(sql)
+                    cursor = await conn.cursor(sql, *parametros)
                     # +1 para distinguir "deu exatamente o limite" de "tem mais".
                     registros = await cursor.fetch(limite_linhas + 1)
         except asyncpg.QueryCanceledError as e:

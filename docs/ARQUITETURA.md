@@ -77,6 +77,50 @@ Duas propriedades que valem registrar:
 - **`EXPLAIN` não é `EXPLAIN ANALYZE`.** O primeiro estima sem ler uma página; o
   segundo executa. Confundir os dois anula a camada 7 inteira.
 
+## O caminho de uma pergunta
+
+```
+pergunta em português
+   │
+   ├─ selecionar_tabelas   recorta o catálogo — não manda o banco inteiro
+   ├─ LLM                  devolve uma ConsultaSpec, nunca SQL
+   ├─ construir            NOSSO código monta o SQL: lista branca + escala + parâmetros
+   ├─ guardrails           prova que é leitura, tabela conhecida, um comando só
+   ├─ EXPLAIN              recusa o que varre demais, antes de executar
+   └─ executar             cursor, transação somente-leitura, prazo
+```
+
+O modelo participa de **um** passo, e o que produz é estrutura validada, não texto
+executável. Errar a spec vira mensagem de erro; errar o SQL viraria um número.
+
+### Por que a spec, e não SQL
+
+Três propriedades que não dependem de o prompt ter dado certo naquela vez:
+
+| Propriedade | Como |
+|---|---|
+| Nome nunca é interpolado | Tabela e coluna resolvidas contra o catálogo; o que não existe vira erro. O identificador sai citado a partir do nome **do catálogo**, não do que o modelo escreveu |
+| Valor nunca entra no texto | Todo valor vira parâmetro vinculado (`$1`, `$2`) |
+| A escala é aplicada por código | `media(salario)` vira `avg("salario") / 100.0`, e "acima de 5.000" vira `> $1` com `$1 = 500000` |
+
+A terceira é a que justifica o desenho. A conversão nos **filtros** é a menos óbvia e a
+mais perigosa: sem ela, "salário acima de 5.000" compararia 5.000 contra centavos e
+traria praticamente a base inteira — uma resposta errada que ninguém questiona, porque
+veio muita linha e não nenhuma.
+
+O modelo recebe instrução explícita de escrever valores na unidade natural **mesmo
+sabendo** que a coluna está em centavos. Pedir que ele converta seria devolver a ele a
+responsabilidade que a camada semântica existe para tirar.
+
+### "Não dá" é resposta
+
+`RespostaDoModelo.pode_responder` existe para o modelo ter como recusar. Sem essa
+saída, uma spec obrigatória o forçaria a inventar uma consulta para toda pergunta —
+inclusive as que o catálogo não responde, que é onde a invenção causa mais dano.
+
+Toda pergunta grava uma linha em `consultas`, inclusive as recusadas: são o mapa de
+onde o dicionário está incompleto.
+
 ## O dicionário: três garantias
 
 A proposta da IA passa por três filtros antes de virar catálogo.
@@ -206,17 +250,18 @@ backend/app/
 ├── repositories/  base (tenant obrigatório)                                ✓
 ├── connectors/    base (contrato), postgres                                ✓
 ├── llm/           cliente da Claude API ✓ (preguiçoso, cacheado, com uso medido)
-├── text2sql/      guardrails ✓, executor ✓
+├── text2sql/      guardrails ✓, executor ✓, spec ✓, catalogo ✓, construtor ✓,
+│                  pipeline ✓
 ├── semantic/      sinais ✓, estrutura ✓, retrato ✓, profiler ✓, persistencia ✓,
 │                  dicionario ✓
 ├── schemas/       conexao ✓
 ├── chat/          histórico, contexto, streaming                           a construir
-└── routers/       health ✓, auth ✓, conexoes ✓ (+ perfilar, dicionário) · chat
+└── routers/       health ✓, auth ✓, conexoes ✓, chat ✓
 alembic/           migration inicial ✓ (10 tabelas, 19 índices)
 scripts/           criar_tenant.py ✓
 ```
 
-242 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
+295 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
 separado**. Guardrails, avaliação de privilégio, sinais e inferência de estrutura são
 funções puras com cobertura exaustiva; conectores e perfilador são coordenação.
 

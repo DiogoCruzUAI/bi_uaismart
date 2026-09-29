@@ -17,6 +17,7 @@ Um conector é responsável por quatro coisas, nesta ordem de importância:
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -217,11 +218,18 @@ class Conector(ABC):
     async def listar_relacionamentos(self) -> list[RelacionamentoBruto]: ...
 
     @abstractmethod
-    async def estimar(self, sql: str) -> Estimativa:
-        """`EXPLAIN` sem executar. É a porta que roda antes de toda consulta."""
+    async def estimar(self, sql: str, parametros: Sequence[Any] = ()) -> Estimativa:
+        """`EXPLAIN` sem executar. É a porta que roda antes de toda consulta.
+
+        Os parâmetros entram no EXPLAIN junto com o SQL: o planejador usa o valor real
+        para estimar seletividade. Estimar com o SQL sem os valores daria um número
+        diferente do da execução, e a porta passaria a proteger outra consulta.
+        """
 
     @abstractmethod
-    async def executar(self, sql: str, limite_linhas: int) -> ResultadoConsulta:
+    async def executar(
+        self, sql: str, limite_linhas: int, parametros: Sequence[Any] = ()
+    ) -> ResultadoConsulta:
         """Executa em transação somente-leitura com prazo. Só chame depois de `estimar`."""
 
     @abstractmethod

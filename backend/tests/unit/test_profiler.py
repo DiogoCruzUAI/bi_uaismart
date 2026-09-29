@@ -61,10 +61,10 @@ class BancoFalso(Conector):
     async def coletar_privilegios(self):
         raise NotImplementedError
 
-    async def estimar(self, sql) -> Estimativa:
+    async def estimar(self, sql, parametros=()) -> Estimativa:
         raise NotImplementedError
 
-    async def executar(self, sql, limite_linhas) -> ResultadoConsulta:
+    async def executar(self, sql, limite_linhas, parametros=()) -> ResultadoConsulta:
         raise NotImplementedError
 
     async def fechar(self) -> None: ...
