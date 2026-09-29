@@ -131,16 +131,20 @@ backend/app/
 ├── models/        tenant, conexao, semantico, chat                         ✓
 ├── repositories/  base (tenant obrigatório)                                ✓
 ├── connectors/    base (contrato), postgres                                ✓
-├── text2sql/      guardrails ✓ (29 testes), executor ✓
-├── semantic/      perfilamento e geração de dicionário                     a construir
+├── text2sql/      guardrails ✓, executor ✓
+├── semantic/      sinais ✓, estrutura ✓, retrato ✓, profiler ✓ · dicionário a construir
 ├── chat/          histórico, contexto, streaming                           a construir
 └── routers/       health ✓ · auth, conexoes, chat                          a construir
 ```
 
+150 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
+separado**. Guardrails, avaliação de privilégio, sinais e inferência de estrutura são
+funções puras com cobertura exaustiva; conectores e perfilador são coordenação.
+
 ## Próximos passos
 
-1. **Perfilador** (`semantic/profiler.py`) — lê `pg_class` e `pg_stats`, monta o retrato
-   do banco sem varrer nada.
+1. ~~**Perfilador**~~ ✓ — `semantic/profiler.py` lê `pg_class` e `pg_stats` e monta o
+   retrato sem varrer nada. Falta persistir no catálogo e expor por endpoint.
 2. **Gerador de dicionário** (`semantic/dicionario.py`) — Claude lê o retrato e propõe
    descrição, o que **não** é, unidade e escala. Batch API. Humano aprova.
 3. **Registro de medidas** — o que vira o equivalente genérico dos cubos YAML.
@@ -148,3 +152,15 @@ backend/app/
    spec estruturada via `messages.parse()`, execução vigiada.
 5. **Conjunto de avaliação** — ~50 perguntas com resposta conferida. Sem isso a acurácia
    é sentida, não medida. Semente em [CASOS-DIFICEIS.md](CASOS-DIFICEIS.md).
+
+### A divisão de trabalho com o LLM
+
+O perfilador entrega **evidência**, não julgamento: `salario` é `bigint`, tem 4,2
+milhões de valores distintos e magnitude 10. Que isso significa **centavos** é
+conclusão do modelo — dez bilhões de reais de salário mensal não existe, cem milhões
+de centavos é um salário alto porém plausível.
+
+A linha está aí de propósito. Aritmética sobre estatística é nossa: determinística,
+barata e testável. Conhecimento de mundo é do modelo. Escrever "salário costuma vir em
+centavos" no perfilador seria embutir a regra do Leads num produto que precisa
+funcionar em banco que ninguém nunca viu.
