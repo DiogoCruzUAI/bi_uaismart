@@ -20,7 +20,6 @@ pydantic-settings==2.6.1
 
 # ─── Segurança ────────────────────────────────────────────────────────────────
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 # Fernet: cifra as credenciais de banco dos clientes em repouso.
 cryptography>=43.0.3
