@@ -55,6 +55,10 @@ python -c "from cryptography.fernet import Fernet; print('CREDENTIALS_KEY=' + Fe
 docker compose up -d --build
 ```
 
+Para provisionar o servidor — especificação da máquina, tuning do Postgres, usuário
+somente-leitura no banco do cliente, retenção e backup — ver
+[docs/INFRA.md](docs/INFRA.md).
+
 A API responde em `http://localhost:8000` e a documentação interativa em
 `http://localhost:8000/docs` (desabilitada em produção, de propósito).
 

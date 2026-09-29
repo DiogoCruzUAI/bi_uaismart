@@ -63,6 +63,12 @@ funcionar em banco de cliente que ninguém nunca viu. Use-os para:
   base (salário em centavos, unidades misturadas, transferências que não são contratação), ela
   funciona em qualquer lugar. Ver `docs/CASOS-DIFICEIS.md`.
 
+## Documentação
+
+- [docs/ARQUITETURA.md](docs/ARQUITETURA.md) — os dois caminhos de consulta e as camadas de defesa
+- [docs/INFRA.md](docs/INFRA.md) — provisionamento, tuning, backup e migração
+- [docs/CASOS-DIFICEIS.md](docs/CASOS-DIFICEIS.md) — conjunto de avaliação
+
 ## Comandos
 
 ```bash
