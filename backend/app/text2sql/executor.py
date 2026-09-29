@@ -65,12 +65,25 @@ async def executar_vigiado(
 
     estimativa = await conector.estimar(sql_final)
 
-    if estimativa.linhas > max_linhas:
+    # Varredura: o maior volume que a consulta toca em qualquer ponto do plano.
+    if estimativa.linhas_varridas > max_linhas:
         raise LimiteExcedido(
-            f"A consulta leria cerca de {_formatar(estimativa.linhas)} linhas, acima do "
-            f"limite de {_formatar(max_linhas)}. Restrinja o período, a região ou "
+            f"A consulta leria cerca de {_formatar(estimativa.linhas_varridas)} linhas, acima "
+            f"do limite de {_formatar(max_linhas)}. Restrinja o período, a região ou "
             "adicione um filtro — uma pergunta mais específica responde mais rápido "
             "e com o mesmo valor."
+        )
+
+    # Agregação não leva LIMIT — limitá-la mudaria a resposta —, então é aqui que
+    # o número de grupos é contido. A memória já está garantida pelo cursor do
+    # conector; esta porta existe para não fazer o banco do cliente calcular o que
+    # ninguém vai ver.
+    if estimativa.linhas > settings.max_estimated_output_rows:
+        raise LimiteExcedido(
+            f"A consulta devolveria cerca de {_formatar(estimativa.linhas)} linhas de "
+            f"resultado, acima do limite de {_formatar(settings.max_estimated_output_rows)}. "
+            "Agrupe por uma dimensão mais ampla (mês em vez de dia, estado em vez de "
+            "município) ou peça os maiores em vez de todos."
         )
 
     if estimativa.custo > max_custo:
@@ -83,6 +96,7 @@ async def executar_vigiado(
     logger.info(
         "consulta_liberada",
         linhas_estimadas=estimativa.linhas,
+        linhas_varridas=estimativa.linhas_varridas,
         custo_estimado=estimativa.custo,
         tabelas=sorted(validado.tabelas_referenciadas),
     )

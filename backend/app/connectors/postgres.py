@@ -245,6 +245,7 @@ class ConectorPostgres(Conector):
         plano = json.loads(bruto)[0]["Plan"] if isinstance(bruto, str) else bruto[0]["Plan"]
         return Estimativa(
             linhas=int(plano.get("Plan Rows", 0)),
+            linhas_varridas=_maior_plan_rows(plano),
             custo=float(plano.get("Total Cost", 0.0)),
             plano=plano,
         )
@@ -258,7 +259,21 @@ class ConectorPostgres(Conector):
                 # `default_transaction_read_only` seja perdido numa reconexão, a
                 # transação continua incapaz de escrever.
                 async with conn.transaction(readonly=True):
-                    registros = await conn.fetch(sql)
+                    # Cursor, não `conn.fetch`.
+                    #
+                    # `conn.fetch` traz o resultado inteiro para a memória antes de
+                    # qualquer corte. Uma agregação não leva LIMIT (limitá-la mudaria
+                    # a resposta), então um `GROUP BY` de alta cardinalidade — cnpj,
+                    # competência — materializaria milhões de linhas aqui e mataria o
+                    # processo por OOM. A porta do EXPLAIN não salva: ela trabalha com
+                    # *estimativa*, e estimativa erra por ordens de grandeza.
+                    #
+                    # Com cursor, o consumo de memória é `limite_linhas + 1` linhas,
+                    # sempre, independentemente do que a consulta devolva. É o que
+                    # torna a RAM da máquina uma conta fechada em vez de uma aposta.
+                    cursor = await conn.cursor(sql)
+                    # +1 para distinguir "deu exatamente o limite" de "tem mais".
+                    registros = await cursor.fetch(limite_linhas + 1)
         except asyncpg.QueryCanceledError as e:
             raise LimiteExcedido(
                 f"A consulta passou de {settings.query_timeout_seconds}s e foi interrompida. "
@@ -315,3 +330,23 @@ def _lista_de_texto_pg(valor: str | None) -> list[Any]:
     if not interno:
         return []
     return [p.strip().strip('"') for p in interno.split(",")]
+
+
+def _maior_plan_rows(plano: dict[str, Any]) -> int:
+    """Maior `Plan Rows` da árvore inteira do plano.
+
+    O nó de topo só conta a saída. `SELECT count(*) FROM caged` tem `Plan Rows = 1`
+    no topo e um `Seq Scan` de 293 milhões logo abaixo — olhar só o topo deixaria
+    passar exatamente a consulta que o limite existe para barrar.
+
+    Percurso iterativo, não recursivo: plano de consulta com muitos JOINs aninhados
+    chega fácil a dezenas de níveis, e um `RecursionError` aqui derrubaria a porta
+    de segurança em vez de fechá-la.
+    """
+    maior = 0
+    pilha = [plano]
+    while pilha:
+        no = pilha.pop()
+        maior = max(maior, int(no.get("Plan Rows", 0) or 0))
+        pilha.extend(no.get("Plans", []) or [])
+    return maior

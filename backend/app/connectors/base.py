@@ -23,9 +23,20 @@ from typing import Any
 
 @dataclass(slots=True)
 class Estimativa:
-    """O que o planejador prevê antes de a consulta rodar."""
+    """O que o planejador prevê antes de a consulta rodar.
+
+    São duas grandezas diferentes e confundi-las inutiliza as duas portas:
+
+    - `linhas` é a saída do nó de topo — quantas linhas o usuário receberia.
+      Numa agregação, é o número de grupos. `SELECT count(*) FROM tabela_gigante`
+      tem `linhas = 1` e não diz nada sobre o esforço.
+    - `linhas_varridas` é o maior `Plan Rows` da árvore inteira — o volume que a
+      consulta realmente toca. É o que denuncia a varredura de 300 milhões de linhas
+      escondida atrás de um `count(*)`.
+    """
 
     linhas: int
+    linhas_varridas: int
     custo: float
     plano: dict[str, Any] = field(default_factory=dict)
 

@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     query_timeout_seconds: int = 30
     max_result_rows: int = 10_000
 
+    # Teto de linhas de SAIDA estimadas — outra coisa que `max_estimated_rows`.
+    # Aquele barra a varredura; este barra a agregação que devolve mais grupos do
+    # que qualquer pessoa lê ou qualquer gráfico desenha. Uma pergunta que produz
+    # dois milhões de grupos foi mal formulada, e calcular tudo para jogar 99,5%
+    # fora é exatamente a força bruta que o projeto recusa.
+    # Folga proposital sobre max_result_rows: estimativa erra, e recusar uma
+    # consulta boa por erro de estimativa é pior que devolvê-la truncada.
+    max_estimated_output_rows: int = 1_000_000
+
     # ─── Validadores ──────────────────────────────────────────────────────────
 
     @field_validator("secret_key")
