@@ -1,0 +1,46 @@
+# ─── Web ──────────────────────────────────────────────────────────────────────
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+
+# ─── Banco de metadados (nosso) ───────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+greenlet==3.1.1
+alembic==1.14.0
+
+# ─── Conectores a bancos de clientes ─────────────────────────────────────────
+# Postgres usa o asyncpg acima. MySQL/MariaDB:
+aiomysql==0.2.0
+pymysql==1.1.1
+
+# ─── Validação ────────────────────────────────────────────────────────────────
+pydantic[email]==2.10.3
+pydantic-settings==2.6.1
+
+# ─── Segurança ────────────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+# Fernet: cifra as credenciais de banco dos clientes em repouso.
+cryptography>=43.0.3
+slowapi==0.1.9
+
+# ─── Análise de SQL ───────────────────────────────────────────────────────────
+# sqlglot parseia o SQL numa AST antes de qualquer execução. É o que permite
+# provar que a consulta é somente-leitura, em vez de torcer para o regex pegar.
+sqlglot>=25.0.0
+
+# ─── LLM ──────────────────────────────────────────────────────────────────────
+anthropic>=1.0.0
+
+# ─── Infra ────────────────────────────────────────────────────────────────────
+redis>=5.2.1
+structlog>=24.4.0
+httpx>=0.28.1
+python-dotenv>=1.0.1
+
+# ─── Testes ───────────────────────────────────────────────────────────────────
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+pytest-cov>=6.0.0

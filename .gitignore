@@ -1,0 +1,36 @@
+# Segredos — nunca versionados. Valores reais só no .env do servidor.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# Dados e artefatos locais
+/data/
+*.dump
+*.sqlite3
+/backend/uploads/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
