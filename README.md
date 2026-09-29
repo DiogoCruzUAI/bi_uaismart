@@ -21,13 +21,15 @@ Ver [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
 **Fase 0 — fundação.** Existe e está testado:
 
+- autenticação JWT com rotação de refresh e bloqueio por tentativas;
 - multi-tenancy estrutural: `tenant_id` obrigatório no repositório, não por disciplina;
 - credenciais de banco de clientes cifradas em repouso (Fernet);
 - guardrails de SQL em 6 camadas, provados em 29 testes (escrita, DDL, encadeamento,
   CTE com `DELETE`, funções de arquivo e rede, esquemas de sistema, lista branca);
 - execução vigiada com porta de `EXPLAIN` antes de qualquer consulta;
 - conector Postgres que perfila por estatística de catálogo, nunca por varredura;
-- registro de procedência de toda consulta, inclusive das recusadas.
+- registro de procedência de toda consulta, inclusive das recusadas;
+- perfilamento semântico e geração de dicionário de dados por IA.
 
 A construir: perfilador semântico, gerador de dicionário, pipeline de pergunta,
 frontend. Roteiro no fim de [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
@@ -61,6 +63,25 @@ somente-leitura no banco do cliente, retenção e backup — ver
 
 A API responde em `http://localhost:8000` e a documentação interativa em
 `http://localhost:8000/docs` (desabilitada em produção, de propósito).
+
+### Criar o primeiro tenant
+
+Não há auto-cadastro: quem abre uma conta é a UAISmart. Sem este passo, ninguém
+consegue fazer login.
+
+```bash
+docker compose exec api python scripts/criar_tenant.py --nome "Empresa Cliente" --slug empresa --admin-nome "Fulano" --admin-email fulano@empresa.com
+```
+
+A senha é gerada e mostrada **uma única vez** — passá-la por argumento a deixaria no
+histórico do shell e visível em `ps` para qualquer usuário do servidor.
+
+O login pede o slug junto com e-mail e senha, porque o mesmo e-mail pode existir em
+mais de um tenant:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login -H 'Content-Type: application/json' -d '{"tenant":"empresa","email":"fulano@empresa.com","senha":"..."}'
+```
 
 ## Testes
 

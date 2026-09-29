@@ -56,3 +56,66 @@ async def fechar_redis() -> None:
     if _redis is not None:
         await _redis.aclose()
         _redis = None
+
+
+# ─── Bloqueio por tentativas de login ─────────────────────────────────────────
+
+# Dez tentativas erradas em quinze minutos bloqueiam a conta por quinze minutos.
+# Números escolhidos para não atrapalhar quem esqueceu a senha (três, quatro
+# tentativas são normais) e tornar inviável percorrer uma lista de senhas vazadas.
+MAX_TENTATIVAS = 10
+JANELA_SEGUNDOS = 900
+
+
+def _chave_tentativas(tenant: str, email: str) -> str:
+    """Identifica a conta sem guardar o e-mail.
+
+    O Redis não é o lugar de um cadastro de e-mails de clientes: hash trunca o dado
+    pessoal e continua servindo para contar tentativas.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(f"{tenant}:{email}".lower().encode()).hexdigest()[:32]
+    return f"login:falhas:{digest}"
+
+
+async def login_bloqueado(tenant: str, email: str) -> bool:
+    r = get_redis()
+    if r is None:
+        return False
+    try:
+        valor = await r.get(_chave_tentativas(tenant, email))
+    except Exception as e:
+        # Redis fora do ar não pode virar "bloqueia todo mundo": o login é a porta
+        # de entrada da plataforma inteira. Aqui a falha abre, e é uma escolha —
+        # a alternativa é uma indisponibilidade total por causa do cache.
+        logger.error("redis_indisponivel_no_bloqueio_de_login", erro=str(e))
+        return False
+    return valor is not None and int(valor) >= MAX_TENTATIVAS
+
+
+async def registrar_falha_de_login(tenant: str, email: str) -> None:
+    r = get_redis()
+    if r is None:
+        return
+    chave = _chave_tentativas(tenant, email)
+    try:
+        # A janela conta a partir da primeira falha e não é estendida pelas
+        # seguintes: quem errou dez vezes espera quinze minutos, não quinze minutos
+        # depois da última tentativa — o que deixaria a conta presa indefinidamente
+        # sob um ataque contínuo.
+        atual = await r.incr(chave)
+        if atual == 1:
+            await r.expire(chave, JANELA_SEGUNDOS)
+    except Exception as e:
+        logger.error("falha_ao_registrar_tentativa_de_login", erro=str(e))
+
+
+async def limpar_falhas_de_login(tenant: str, email: str) -> None:
+    r = get_redis()
+    if r is None:
+        return
+    try:
+        await r.delete(_chave_tentativas(tenant, email))
+    except Exception:
+        pass

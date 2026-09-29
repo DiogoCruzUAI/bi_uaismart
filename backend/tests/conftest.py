@@ -14,6 +14,11 @@ os.environ.setdefault("DB_PASSWORD", "senha-de-teste")
 os.environ.setdefault("SECRET_KEY", secrets.token_hex(32))
 os.environ.setdefault("CREDENTIALS_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("APP_ENV", "development")
+# Sem isto a suíte tenta conectar no host `redis` do compose, que não existe fora
+# dele, e trava em tempo limite de rede. O bloqueio de login tem testes próprios,
+# com um Redis falso (`test_bloqueio_login.py`) — teste de rota não é o lugar de
+# exercitar infraestrutura.
+os.environ.setdefault("REDIS_ENABLED", "false")
 
 
 import pytest_asyncio  # noqa: E402

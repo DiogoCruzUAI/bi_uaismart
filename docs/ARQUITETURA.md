@@ -119,6 +119,38 @@ tela poder dizer que nada se perdeu.
 `versao_dicionario` só sobe quando a **estrutura** muda: ela entra na chave de cache de
 toda pergunta, e reperfilar sem novidade não pode invalidar o cache de todo mundo.
 
+## Autenticação
+
+**O login não conta nada a quem não entrou.** Tenant inexistente, e-mail inexistente,
+senha errada e usuário desativado devolvem a mesma resposta — e todos executam bcrypt,
+inclusive quando não há hash real para comparar. Sem isso, a diferença de tempo entre
+"tenant não existe" (microssegundos) e "senha errada" (centenas de milissegundos)
+enumeraria clientes e usuários com um cronômetro.
+
+**O login pede o tenant.** O e-mail é único por tenant, não globalmente: a mesma pessoa
+pode ser usuária de duas empresas clientes. Procurar o e-mail em todos os tenants
+transformaria o login num oráculo de onde cada pessoa trabalha. Na prática o frontend
+preenche o campo a partir do subdomínio.
+
+**Renovar rotaciona.** O refresh usado é revogado no ato. Sem isso, um refresh vazado
+vale até expirar — inclusive depois do logout e da troca de senha, que é justamente
+quando a pessoa acha que resolveu o problema.
+
+**Bloqueio por tentativas**: dez falhas em quinze minutos travam a conta por quinze
+minutos, contados da primeira falha e não da última — estender a janela a cada
+tentativa deixaria a conta presa indefinidamente sob ataque contínuo, punindo o dono.
+A chave no Redis é um hash: o cache não é lugar de cadastro de e-mails de clientes.
+
+Com o Redis fora do ar, o bloqueio **abre**. É escolha consciente: o login é a porta de
+entrada da plataforma, a alternativa seria indisponibilidade total por causa do cache,
+e a senha continua sendo exigida.
+
+### Dívida conhecida
+
+Trocar a senha **não revoga as sessões existentes**. Fazê-lo exige rastrear todos os
+`jti` do usuário, não só o atual. Precisa ser fechado antes do primeiro cliente real:
+hoje, quem troca a senha porque desconfia de invasão não expulsa o invasor.
+
 ## Multi-tenancy
 
 Fundação, não fase posterior. Retrofit de isolamento é como se vaza dado.
@@ -179,11 +211,12 @@ backend/app/
 │                  dicionario ✓
 ├── schemas/       conexao ✓
 ├── chat/          histórico, contexto, streaming                           a construir
-└── routers/       health ✓, conexoes ✓ (+ perfilar, dicionário) · auth, chat
+└── routers/       health ✓, auth ✓, conexoes ✓ (+ perfilar, dicionário) · chat
 alembic/           migration inicial ✓ (10 tabelas, 19 índices)
+scripts/           criar_tenant.py ✓
 ```
 
-206 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
+242 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
 separado**. Guardrails, avaliação de privilégio, sinais e inferência de estrutura são
 funções puras com cobertura exaustiva; conectores e perfilador são coordenação.
 
