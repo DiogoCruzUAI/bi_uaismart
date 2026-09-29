@@ -77,6 +77,28 @@ Duas propriedades que valem registrar:
 - **`EXPLAIN` não é `EXPLAIN ANALYZE`.** O primeiro estima sem ler uma página; o
   segundo executa. Confundir os dois anula a camada 7 inteira.
 
+## O dicionário: três garantias
+
+A proposta da IA passa por três filtros antes de virar catálogo.
+
+**1. O modelo não inventa.** As instruções mandam responder `desconhecida` com
+confiança baixa quando a evidência não basta — "não sei" é resposta correta e útil, um
+palpite confiante não é.
+
+**2. Alucinação não entra.** Saída estruturada garante o **formato**, não o
+**conteúdo**: o modelo pode devolver uma coluna inexistente com schema perfeitamente
+válido. `validar_proposta` descarta tabela e coluna que não foram enviadas, e zera
+escala fora do plausível (`escala: 7` não descreve banco nenhum) — preferimos não
+converter a converter errado.
+
+**3. Proposta é proposta.** Tudo entra com `confianca_ia` e **sem** `revisada_em`. A
+plataforma usa a descrição e diz, na resposta, que ninguém revisou ainda. O que já foi
+revisado por uma pessoa nunca é sobrescrito — nem para "melhorar".
+
+O campo que justifica o módulo é `descricao_negativa`: a leitura errada mais provável.
+"Porte vem do cadastro fiscal e NÃO é faturamento." É o que nenhum schema tem e o que
+separa um número certo de um número com cara de certo.
+
 ## Reperfilar preserva o julgamento humano
 
 A regra mais importante da persistência (`semantic/persistencia.py`), e a mais fácil de
@@ -151,15 +173,17 @@ backend/app/
 ├── models/        tenant, conexao, semantico, chat                         ✓
 ├── repositories/  base (tenant obrigatório)                                ✓
 ├── connectors/    base (contrato), postgres                                ✓
+├── llm/           cliente da Claude API ✓ (preguiçoso, cacheado, com uso medido)
 ├── text2sql/      guardrails ✓, executor ✓
-├── semantic/      sinais ✓, estrutura ✓, retrato ✓, profiler ✓, persistencia ✓
+├── semantic/      sinais ✓, estrutura ✓, retrato ✓, profiler ✓, persistencia ✓,
+│                  dicionario ✓
 ├── schemas/       conexao ✓
 ├── chat/          histórico, contexto, streaming                           a construir
-└── routers/       health ✓, conexoes ✓ · auth, chat                        a construir
+└── routers/       health ✓, conexoes ✓ (+ perfilar, dicionário) · auth, chat
 alembic/           migration inicial ✓ (10 tabelas, 19 índices)
 ```
 
-183 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
+206 testes. A divisão que se repete em todo módulo: **lógica pura e testável, I/O
 separado**. Guardrails, avaliação de privilégio, sinais e inferência de estrutura são
 funções puras com cobertura exaustiva; conectores e perfilador são coordenação.
 
@@ -168,8 +192,9 @@ funções puras com cobertura exaustiva; conectores e perfilador são coordenaç
 1. ~~**Perfilador**~~ ✓ — completo: `semantic/profiler.py` monta o retrato,
    `semantic/persistencia.py` grava no catálogo e `routers/conexoes.py` expõe
    `POST /conexoes/{id}/perfilar`.
-2. **Gerador de dicionário** (`semantic/dicionario.py`) — Claude lê o retrato e propõe
-   descrição, o que **não** é, unidade e escala. Batch API. Humano aprova.
+2. ~~**Gerador de dicionário**~~ ✓ — `semantic/dicionario.py`. Falta só a chave da
+   Anthropic: tudo que decide qualidade (prompt, lotes, validação, aplicação) está
+   escrito e testado; a chamada é uma linha. Batch API fica para quando houver volume.
 3. **Registro de medidas** — o que vira o equivalente genérico dos cubos YAML.
 4. **Pipeline de pergunta** (`text2sql/pipeline.py`) — recuperação do contexto relevante,
    spec estruturada via `messages.parse()`, execução vigiada.

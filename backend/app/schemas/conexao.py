@@ -114,3 +114,23 @@ class ResultadoPerfilamento(BaseModel):
     revisoes_preservadas: int
     versao_dicionario: int
     avisos: list[str] = Field(default_factory=list)
+
+
+class ResultadoDicionario(BaseModel):
+    """Resultado de `POST /conexoes/{id}/dicionario`.
+
+    Os contadores de token vão para a tela de propósito: gerar dicionário é a operação
+    mais cara da plataforma, e o cliente precisa ver o custo do que acabou de pedir em
+    vez de descobri-lo na fatura.
+    """
+
+    tabelas_descritas: int
+    colunas_descritas: int
+    revisoes_respeitadas: int
+    lotes: int
+    lotes_com_falha: int
+    tokens_entrada: int
+    tokens_cache_leitura: int
+    tokens_saida: int
+    modelo: str
+    problemas: list[str] = Field(default_factory=list)

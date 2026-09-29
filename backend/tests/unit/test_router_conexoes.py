@@ -314,3 +314,130 @@ async def test_leitor_nao_cadastra_nem_perfila(db, tenant):
             assert (await c.get("/api/v1/conexoes")).status_code == 200
     finally:
         app.dependency_overrides.clear()
+
+
+# ─── Dicionário ───────────────────────────────────────────────────────────────
+
+
+def _retrato_minimo():
+    from app.semantic.retrato import RetratoBanco, RetratoColuna, RetratoTabela
+    from app.semantic.sinais import classificar_coluna
+
+    return RetratoBanco(
+        coletado_em=datetime.now(timezone.utc),
+        tabelas=[
+            RetratoTabela(
+                esquema="public", nome="pedidos", eh_view=False, papel="fato",
+                linhas_estimadas=1_000, bytes_estimados=10_000,
+                colunas=[
+                    RetratoColuna(
+                        nome="total", tipo_sql="bigint", aceita_nulo=True,
+                        eh_chave_primaria=False,
+                        sinais=classificar_coluna(
+                            tipo_sql="bigint", cardinalidade=800, fracao_nula=0.0,
+                            linhas_tabela=1_000, maximo="99000000",
+                        ),
+                        cardinalidade=800, maximo="99000000",
+                    )
+                ],
+            )
+        ],
+    )
+
+
+async def test_sem_chave_da_anthropic_responde_503(cliente, monkeypatch):
+    """O estado atual do projeto: perfila, mas não gera dicionário.
+
+    503 e não 500: é dependência externa indisponível, e o cliente pode tentar de
+    novo depois de configurar a chave.
+    """
+    from app.llm.cliente import LlmIndisponivel
+
+    async def perfilar_falso(conector, **kw):
+        return _retrato_minimo()
+
+    async def sem_chave(retrato, **kw):
+        raise LlmIndisponivel("ANTHROPIC_API_KEY não configurada.")
+
+    monkeypatch.setattr("app.routers.conexoes.perfilar", perfilar_falso)
+    monkeypatch.setattr("app.routers.conexoes.gerar_dicionario_completo", sem_chave)
+
+    criada = (await cliente.post("/api/v1/conexoes", json=CORPO)).json()
+    r = await cliente.post(f"/api/v1/conexoes/{criada['id']}/dicionario")
+
+    assert r.status_code == 503
+    assert r.json()["detail"]["erro"] == "LLM_INDISPONIVEL"
+
+
+async def test_perfilamento_e_salvo_mesmo_se_o_dicionario_falhar(cliente, monkeypatch, db):
+    """Perder o catálogo porque o LLM caiu seria jogar fora trabalho já feito."""
+    from sqlalchemy import select
+
+    from app.llm.cliente import LlmIndisponivel
+    from app.models.semantico import Tabela
+
+    async def perfilar_falso(conector, **kw):
+        return _retrato_minimo()
+
+    async def sem_chave(retrato, **kw):
+        raise LlmIndisponivel("indisponível")
+
+    monkeypatch.setattr("app.routers.conexoes.perfilar", perfilar_falso)
+    monkeypatch.setattr("app.routers.conexoes.gerar_dicionario_completo", sem_chave)
+
+    criada = (await cliente.post("/api/v1/conexoes", json=CORPO)).json()
+    await cliente.post(f"/api/v1/conexoes/{criada['id']}/dicionario")
+
+    tabelas = (await db.execute(select(Tabela))).scalars().all()
+    assert [t.nome for t in tabelas] == ["pedidos"]
+
+
+async def test_dicionario_aplica_e_devolve_o_custo(cliente, monkeypatch, db):
+    from sqlalchemy import select
+
+    from app.llm.cliente import Uso
+    from app.models.semantico import Coluna, UnidadeColuna
+    from app.semantic.dicionario import PropostaColuna, PropostaTabela, ResultadoCompleto
+
+    async def perfilar_falso(conector, **kw):
+        return _retrato_minimo()
+
+    async def gerar_falso(retrato, **kw):
+        return ResultadoCompleto(
+            tabelas=[
+                PropostaTabela(
+                    tabela="public.pedidos", descricao="Pedidos de venda.",
+                    papel="fato", confianca=0.9,
+                    colunas=[
+                        PropostaColuna(
+                            nome="total",
+                            descricao="Valor total do pedido, em centavos.",
+                            descricao_negativa="NÃO inclui frete.",
+                            unidade=UnidadeColuna.monetaria, escala=100.0,
+                            moeda="BRL", confianca=0.8,
+                        )
+                    ],
+                )
+            ],
+            lotes=1,
+            uso=Uso(entrada=1200, cache_leitura=8000, saida=400, modelo="claude-opus-5-5"),
+        )
+
+    monkeypatch.setattr("app.routers.conexoes.perfilar", perfilar_falso)
+    monkeypatch.setattr("app.routers.conexoes.gerar_dicionario_completo", gerar_falso)
+
+    criada = (await cliente.post("/api/v1/conexoes", json=CORPO)).json()
+    r = await cliente.post(f"/api/v1/conexoes/{criada['id']}/dicionario")
+
+    assert r.status_code == 200
+    corpo = r.json()
+    assert corpo["tabelas_descritas"] == 1
+    assert corpo["colunas_descritas"] == 1
+    # O custo vai para a tela: gerar dicionário é a operação mais cara da plataforma.
+    assert corpo["tokens_cache_leitura"] == 8000
+    assert corpo["modelo"] == "claude-opus-5-5"
+
+    total = (await db.execute(select(Coluna).where(Coluna.nome == "total"))).scalar_one()
+    assert total.escala == 100.0
+    assert total.descricao_negativa == "NÃO inclui frete."
+    assert total.revisada_em is None  # proposta da IA, ainda não revisada

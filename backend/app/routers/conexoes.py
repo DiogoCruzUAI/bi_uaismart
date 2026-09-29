@@ -19,13 +19,16 @@ from app.core.deps import Db, TenantAtual, UsuarioAtual, exigir_perfil
 from app.models.conexao import Conexao, StatusConexao
 from app.models.tenant import PerfilUsuario
 from app.repositories.base import TenantRepository
+from app.llm.cliente import LlmIndisponivel
 from app.schemas.conexao import (
     ConexaoAtualizar,
     ConexaoCriar,
     ConexaoResposta,
+    ResultadoDicionario,
     ResultadoPerfilamento,
     ResultadoTeste,
 )
+from app.semantic.dicionario import aplicar_proposta, gerar_dicionario_completo
 from app.semantic.persistencia import persistir_retrato
 from app.semantic.profiler import perfilar
 
@@ -240,4 +243,74 @@ async def perfilar_conexao(
         revisoes_preservadas=resumo.revisoes_preservadas,
         versao_dicionario=resumo.versao_dicionario,
         avisos=resumo.avisos,
+    )
+
+
+@router.post("/{conexao_id}/dicionario", response_model=ResultadoDicionario)
+async def gerar_dicionario_da_conexao(
+    conexao_id: int,
+    db: Db,
+    tenant_id: TenantAtual,
+    _: SomenteAdmin,
+    limite_tabelas: int | None = None,
+) -> ResultadoDicionario:
+    """Perfila e pede ao modelo a descrição de cada tabela e coluna.
+
+    Reperfila antes de gerar em vez de reaproveitar o catálogo: descrever uma coluna a
+    partir de estatística velha é como documentar a versão anterior do banco. O
+    perfilamento só consulta catálogo, então o custo é desprezível perto do da chamada
+    ao modelo.
+
+    O que a IA propõe entra com `confianca_ia` e **sem** marca de revisão — a
+    plataforma usa e diz, na resposta ao usuário, que ninguém revisou ainda. O que já
+    foi revisado por uma pessoa não é tocado.
+    """
+    conexao = await _buscar(db, tenant_id, conexao_id)
+
+    try:
+        conector = criar_conector(conexao)
+    except TipoNaoSuportado as e:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"erro": "TIPO_NAO_SUPORTADO", "mensagem": str(e)},
+        ) from e
+
+    try:
+        retrato = await perfilar(conector, limite_tabelas=limite_tabelas)
+    except ErroDeConexao as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"erro": "FALHA_NO_PERFILAMENTO", "mensagem": str(e)},
+        ) from e
+    finally:
+        await conector.fechar()
+
+    await persistir_retrato(db, tenant_id=tenant_id, conexao=conexao, retrato=retrato)
+
+    try:
+        completo = await gerar_dicionario_completo(retrato)
+    except LlmIndisponivel as e:
+        # 503 e não 500: é indisponibilidade de dependência externa, e o cliente
+        # pode tentar de novo. O perfilamento acima já foi salvo.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"erro": "LLM_INDISPONIVEL", "mensagem": str(e)},
+        ) from e
+
+    resumo = await aplicar_proposta(
+        db, tenant_id=tenant_id, conexao=conexao, tabelas=completo.tabelas
+    )
+    await db.flush()
+
+    return ResultadoDicionario(
+        tabelas_descritas=resumo.tabelas_descritas,
+        colunas_descritas=resumo.colunas_descritas,
+        revisoes_respeitadas=resumo.revisoes_respeitadas,
+        lotes=completo.lotes,
+        lotes_com_falha=completo.lotes_com_falha,
+        tokens_entrada=completo.uso.entrada,
+        tokens_cache_leitura=completo.uso.cache_leitura,
+        tokens_saida=completo.uso.saida,
+        modelo=completo.uso.modelo,
+        problemas=completo.problemas[:50],
     )
